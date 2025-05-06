@@ -82,13 +82,14 @@ public class GoogleAuth: CAPPlugin {
             } else {
                 let presentingVc = self.bridge!.viewController!;
                 
-                self.googleSignIn.signIn(with: self.googleSignInConfiguration, presenting: presentingVc, hint: nil, additionalScopes: self.additionalScopes) { user, error in
+                self.googleSignIn.configuration = self.googleSignInConfiguration;
+                self.googleSignIn.signIn(withPresenting: presentingVc, hint: nil, additionalScopes: self.additionalScopes, completion: { result, error in
                     if let error = error {
                         self.signInCall?.reject(error.localizedDescription, "\(error._code)");
                         return;
                     }
-                    self.resolveSignInCallWith(user: user!);
-                };
+                    self.resolveSignInCallWith(user: result!.user);
+                });
             }
         }
     }
@@ -100,15 +101,15 @@ public class GoogleAuth: CAPPlugin {
                 call.reject("User not logged in.");
                 return
             }
-            self.googleSignIn.currentUser!.authentication.do { (authentication, error) in
-                guard let authentication = authentication else {
+            self.googleSignIn.currentUser!.refreshTokensIfNeeded { (user, error) in
+                guard let user = user else {
                     call.reject(error?.localizedDescription ?? "Something went wrong.");
                     return;
                 }
                 let authenticationData: [String: Any] = [
-                    "accessToken": authentication.accessToken,
-                    "idToken": authentication.idToken ?? NSNull(),
-                    "refreshToken": authentication.refreshToken
+                    "accessToken": user.accessToken.tokenString,
+                    "idToken": user.idToken?.tokenString ?? NSNull(),
+                    "refreshToken": user.refreshToken.tokenString
                 ]
                 call.resolve(authenticationData);
             }
@@ -164,11 +165,12 @@ public class GoogleAuth: CAPPlugin {
     func resolveSignInCallWith(user: GIDGoogleUser) {
         var userData: [String: Any] = [
             "authentication": [
-                "accessToken": user.authentication.accessToken,
-                "idToken": user.authentication.idToken,
-                "refreshToken": user.authentication.refreshToken
+                "accessToken": user.accessToken.tokenString,
+                "idToken": user.idToken?.tokenString,
+                "refreshToken": user.refreshToken.tokenString
             ],
-            "serverAuthCode": user.serverAuthCode ?? NSNull(),
+            // serverAuthCode is removed in GoogleSignIn v7
+            "serverAuthCode": NSNull(),
             "email": user.profile?.email ?? NSNull(),
             "familyName": user.profile?.familyName ?? NSNull(),
             "givenName": user.profile?.givenName ?? NSNull(),
